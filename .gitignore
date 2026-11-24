@@ -1,4 +1,6 @@
 /build/
+/docs/*
+!/docs/device-notes.md
 *.db
 *.db-journal
 *.db-shm

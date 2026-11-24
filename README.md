@@ -14,6 +14,12 @@
 
 ## 构建
 
+获取源码时初始化 Mbed TLS 子模块：
+
+```sh
+git submodule update --init --recursive
+```
+
 主机需要 C 编译器、SQLite 开发头文件和 `make`：
 
 ```sh
@@ -69,6 +75,11 @@ adb shell "sh /tmp/zxct-deploy/install-autostart.sh"
 
 后台状态位于 `/tmp/zxct-ims.status`：`registered` 为已注册，`starting` 和 `waiting` 表示尚未就绪。检查时也应确认进程存在。前台调试时，可先解压并运行程序，从标准输入输入原厂后台密码；设备管理终端可能回显输入，应使用可信终端。
 
-## 参考与许可证
+## 许可证
 
-项目代码采用 [Apache-2.0](LICENSE)。第三方组件、参考项目、许可证及待核实事项见 [第三方说明](THIRD_PARTY_NOTICES.md)；设备验证范围见 [设备记录](docs/device-notes.md)，审计范围和已知风险见 [审计记录](docs/security-review.md)。
+项目代码采用 [GPL-3.0](LICENSE)，参考 ims-go 进行重写。
+
+## 致谢
+
+- [ims-go](https://github.com/damonto/ims-go)
+- [alice-pusher-bot-zxic](https://github.com/Amamiyashi0n/alice-pusher-bot-zxic)
