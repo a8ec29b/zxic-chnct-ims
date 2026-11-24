@@ -42,7 +42,7 @@ make arm \
 
 从项目 Releases 下载适合电脑系统的部署包并解压。将插有中国电信卡的设备通过 USB 连接电脑，确保 ADB 已授权、设备有足够的可写空间。Windows 可能需要安装设备的 ADB 驱动；部署包已包含 ADB 程序。
 
-Windows 双击 `install.cmd` 安装，双击 `uninstall.cmd` 卸载。Linux 在解压后的目录打开终端，执行 `./install.sh` 安装，执行 `./uninstall.sh` 卸载。如果解压工具没有保留可执行权限，先执行 `chmod +x install.sh uninstall.sh platform-tools/adb`。
+Windows 双击 `install.cmd` 安装，双击 `uninstall.cmd` 卸载。Linux 部署包内的 ADB 适用于 x86-64 电脑；在解压后的目录打开终端，执行 `./install.sh` 安装，执行 `./uninstall.sh` 卸载。如果解压工具没有保留可执行权限，先执行 `chmod +x install.sh uninstall.sh platform-tools/adb`。
 
 脚本在电脑上运行，通过 ADB 将所需文件传入设备并执行设备端安装或卸载脚本。安装程序保留已有的可写启动脚本，并在原厂短信开关为 `no` 时将其设为 `yes`。安装后需重启设备，重启会短暂断网；启动脚本会将压缩程序解压到内存中的 `/tmp/zxct-ims` 并启动。
 
