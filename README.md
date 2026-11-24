@@ -40,38 +40,15 @@ make arm \
 
 ## 安装与运行
 
-先确认设备已连接 ADB、插入中国电信卡，并有足够的可写空间。ADB shell 需要能够写入 `/mnt/userdata` 并执行设备上的 `nv` 命令。示例将压缩程序放在设备的持久存储中，将安装脚本放在临时目录：
+从项目 Releases 下载适合电脑系统的部署包并解压。将插有中国电信卡的设备通过 USB 连接电脑，确保 ADB 已授权、设备有足够的可写空间。Windows 可能需要安装设备的 ADB 驱动；部署包已包含 ADB 程序。
 
-```sh
-adb push build/zxct-ims.arm.gz /mnt/userdata/zxct-ims.gz
-adb shell 'mkdir -p /tmp/zxct-deploy'
-adb push deploy/global.sh /tmp/zxct-deploy/global.sh
-adb push deploy/hook.sh /tmp/zxct-deploy/hook.sh
-adb push deploy/install-autostart.sh /tmp/zxct-deploy/install-autostart.sh
-adb push deploy/uninstall-autostart.sh /tmp/zxct-deploy/uninstall-autostart.sh
-adb shell 'sh /tmp/zxct-deploy/install-autostart.sh'
-```
+Windows 双击 `install.cmd` 安装，双击 `uninstall.cmd` 卸载。Linux 在解压后的目录打开终端，执行 `./install.sh` 安装，执行 `./uninstall.sh` 卸载。如果解压工具没有保留可执行权限，先执行 `chmod +x install.sh uninstall.sh platform-tools/adb`。
 
-安装程序保留已有的可写启动脚本，并在原厂短信开关为 `no` 时将其设为 `yes`。重启后，启动脚本将程序解压到设备内存中的 `/tmp/zxct-ims` 并启动。卸载启动入口可执行 `/tmp/zxct-deploy/uninstall-autostart.sh`；它不会删除短信库。
+脚本在电脑上运行，通过 ADB 将所需文件传入设备并执行设备端安装或卸载脚本。安装程序保留已有的可写启动脚本，并在原厂短信开关为 `no` 时将其设为 `yes`。安装后需重启设备，重启会短暂断网；启动脚本会将压缩程序解压到内存中的 `/tmp/zxct-ims` 并启动。
 
-### Windows 部署
+卸载会移除程序和启动入口，并尝试停止正在运行的程序；如果设备不支持停止命令，重启后程序会停止。设备短信数据库和短信功能开关会保留。
 
-Windows 电脑可以使用 [Android SDK Platform-Tools](https://developer.android.com/tools/releases/platform-tools) 中的 ADB 部署，必要时安装设备的 Windows ADB 驱动。安装脚本通过 `adb shell` 在设备内运行，电脑部署时不需要 WSL。可从项目 Releases 下载部署包并解压，或在 Linux 或 WSL 中按上面的步骤构建。部署目录需要包含 `build/zxct-ims.arm.gz` 和 `deploy` 目录中的脚本。
-
-将 Platform-Tools 加入 PATH，在解压后的部署目录或项目根目录打开 PowerShell，执行：
-
-```powershell
-adb devices
-adb push .\build\zxct-ims.arm.gz /mnt/userdata/zxct-ims.gz
-adb shell "mkdir -p /tmp/zxct-deploy"
-adb push .\deploy\global.sh /tmp/zxct-deploy/global.sh
-adb push .\deploy\hook.sh /tmp/zxct-deploy/hook.sh
-adb push .\deploy\install-autostart.sh /tmp/zxct-deploy/install-autostart.sh
-adb push .\deploy\uninstall-autostart.sh /tmp/zxct-deploy/uninstall-autostart.sh
-adb shell "sh /tmp/zxct-deploy/install-autostart.sh"
-```
-
-`adb devices` 应将设备状态显示为 `device`；如果显示 `unauthorized`，需先在设备上完成 ADB 授权。安装后重新启动设备会短暂断网，启动完成后可用 `adb shell "cat /tmp/zxct-ims.status"` 和 `adb shell "ps | grep zxct-ims"` 检查状态与进程。
+从源码构建后，也可在仓库根目录使用这些脚本；此时需要在电脑 PATH 中准备 ADB。脚本使用 `build/zxct-ims.arm.gz` 作为程序文件。ADB shell 需要能够写入 `/mnt/userdata` 并执行设备上的 `nv` 命令。
 
 后台状态位于 `/tmp/zxct-ims.status`：`registered` 为已注册，`starting` 和 `waiting` 表示尚未就绪。检查时也应确认进程存在。前台调试时，可先解压并运行程序，从标准输入输入原厂后台密码；设备管理终端可能回显输入，应使用可信终端。
 

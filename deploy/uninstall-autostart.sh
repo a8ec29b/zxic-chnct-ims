@@ -17,4 +17,7 @@ elif [ "$current" != /sbin ]; then
 fi
 rm -f "$dir/global.sh"
 rmdir "$dir" 2>/dev/null || :
-echo "Startup entry removed."
+if command -v killall >/dev/null 2>&1; then killall zxct-ims 2>/dev/null || :; fi
+rm -f /mnt/userdata/zxct-ims.gz /mnt/userdata/zxct-ims /tmp/zxct-ims /tmp/zxct-ims.status
+rmdir /tmp/zxct-ims-autostart 2>/dev/null || :
+echo "Startup entry and program removed."
