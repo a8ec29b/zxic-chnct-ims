@@ -4,7 +4,7 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 ROOT = Path(__file__).resolve().parent.parent
-DEPLOY = ("global.sh", "hook.sh", "install-autostart.sh", "uninstall-autostart.sh")
+DEPLOY = ("global.sh", "hook.sh", "install-autostart.sh", "uninstall-autostart.sh", "webui.sh", "webui.js")
 
 
 def add(archive, name, data, executable=False):

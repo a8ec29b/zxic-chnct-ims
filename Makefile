@@ -105,7 +105,10 @@ build/mbedtls_%.o: third_party/mbedtls/library/%.c src/zxct_mbedtls_config.h | b
 build/libzxct.a: build/sms_store.o build/at_http.o build/usim.o build/sms_pdu.o build/sms_receipt.o build/sms_report.o build/sms_incoming.o build/sip_message.o build/sip_transaction.o build/ims_digest.o build/ims_challenge.o build/ims_security.o build/ims_register.o build/ims_registration.o build/ims_transport.o build/ims_socket.o build/ims_identity.o build/operator_gate.o build/ims_app.o build/ims_pdn.o build/ims_activate.o build/esp_null.o build/udp6.o build/modem_info.o build/mbedtls_md.o build/mbedtls_md5.o build/mbedtls_sha1.o build/mbedtls_platform_util.o build/mbedtls_base64.o build/mbedtls_constant_time.o
 	$(AR) rcs $@ $^
 
-build/zxct-ims: build/main.o build/ims_runtime.o build/ims_pdn_interface.o build/libzxct.a
+build/ui_server.o: src/ui_server.c src/ui_server.h | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(DEPFLAGS) -c $< -o $@
+
+build/zxct-ims: build/main.o build/ui_server.o build/ims_runtime.o build/ims_pdn_interface.o build/libzxct.a
 	$(CC) $(CFLAGS) $^ -lsqlite3 -ldl -o $@
 
 build/test_sms_store: tests/test_sms_store.c src/sms_store.c src/sms_store.h | build
@@ -207,7 +210,7 @@ build/test_sms_store.arm: tests/test_sms_store.c src/sms_store.c src/sms_store.h
 
 arm-probes: build/at_http_probe.arm build/test_sms_store.arm
 
-ARM_SOURCES = src/main.c src/ims_runtime.c src/ims_app.c src/operator_gate.c src/modem_info.c src/ims_pdn.c src/ims_pdn_interface.c src/ims_activate.c src/at_http.c src/usim.c src/ims_identity.c src/sip_message.c src/sip_transaction.c src/ims_register.c src/ims_registration.c src/ims_challenge.c src/ims_security.c src/ims_transport.c src/ims_socket.c src/ims_digest.c src/esp_null.c src/udp6.c src/sms_incoming.c src/sms_report.c src/sms_receipt.c src/sms_pdu.c src/sms_store.c $(CRYPTO_SOURCES)
+ARM_SOURCES = src/main.c src/ui_server.c src/ims_runtime.c src/ims_app.c src/operator_gate.c src/modem_info.c src/ims_pdn.c src/ims_pdn_interface.c src/ims_activate.c src/at_http.c src/usim.c src/ims_identity.c src/sip_message.c src/sip_transaction.c src/ims_register.c src/ims_registration.c src/ims_challenge.c src/ims_security.c src/ims_transport.c src/ims_socket.c src/ims_digest.c src/esp_null.c src/udp6.c src/sms_incoming.c src/sms_report.c src/sms_receipt.c src/sms_pdu.c src/sms_store.c $(CRYPTO_SOURCES)
 
 build/zxct-ims.arm: $(ARM_SOURCES) $(wildcard src/*.h) build/arm-include/sqlite3.h
 	$(ARM_CC) $(ARM_FLAGS) $(CRYPTO_CPPFLAGS) -Ibuild/arm-include $(ARM_SOURCES) -L$(ARM_SYSROOT_LIB) -Wl,-rpath-link,$(ARM_SYSROOT_LIB) -Wl,--no-as-needed -l:libpthread.so.0 -l:libsqlite.so -l:libdl.so.0 -l:libc.so.0 -Wl,--as-needed -o $@

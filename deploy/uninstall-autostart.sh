@@ -15,9 +15,10 @@ elif [ "$current" != /sbin ]; then
         mv "$script.next" "$script"
     fi
 fi
-rm -f "$dir/global.sh"
+umount /etc_ro/web/index.html 2>/dev/null || :
+rm -f /tmp/zxct-ims-index.html "$dir/webui.sh" "$dir/webui.js" "$dir/global.sh"
 rmdir "$dir" 2>/dev/null || :
 if command -v killall >/dev/null 2>&1; then killall zxct-ims 2>/dev/null || :; fi
-rm -f /mnt/userdata/zxct-ims.gz /mnt/userdata/zxct-ims /tmp/zxct-ims /tmp/zxct-ims.status
+rm -f /mnt/userdata/zxct-ims.gz /mnt/userdata/zxct-ims /tmp/zxct-ims /tmp/zxct-ims.status /tmp/zxct-ims.pid
 rmdir /tmp/zxct-ims-autostart 2>/dev/null || :
 echo "Startup entry and program removed."

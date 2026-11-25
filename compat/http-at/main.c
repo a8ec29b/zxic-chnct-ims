@@ -1,5 +1,6 @@
 #include "ims_app.h"
 #include "ims_runtime.h"
+#include "ui_server.h"
 
 #include <errno.h>
 #include <string.h>
@@ -13,6 +14,7 @@ int main(int argc, char **argv)
     char ch;
     ssize_t n;
     int result, daemon = 0;
+    if (argc == 2 && !strcmp(argv[1], "--webui")) return ui_server_run();
     if (argc == 2 && !strcmp(argv[1], "--daemon")) daemon = 1;
     else if (argc != 1) return 1;
     while (length + 1 < sizeof(password)) {

@@ -374,6 +374,12 @@ int ims_runtime_start(struct at_http *at, const char *imsi, void *context)
     }
     r = calloc(1, sizeof(*r));
     if (!r) return rc;
+    if (background) {
+        FILE *pid_file = fopen("/tmp/zxct-ims.pid", "w");
+        if (!pid_file) goto out;
+        fprintf(pid_file, "%ld\n", (long)getpid());
+        fclose(pid_file);
+    }
     update_status("starting\n");
     memset(&action, 0, sizeof(action));
     action.sa_handler = stop_handler;
@@ -427,7 +433,7 @@ out:
     if (r->esp_fd >= 0) close(r->esp_fd);
     if (r->db) sqlite3_close(r->db);
     if (r->usim.channel) usim_close(&r->usim);
-    if (background) unlink("/tmp/zxct-ims.status");
+    if (background) { unlink("/tmp/zxct-ims.status"); unlink("/tmp/zxct-ims.pid"); }
     memset(r, 0, sizeof(*r)); free(r);
     return rc;
 }

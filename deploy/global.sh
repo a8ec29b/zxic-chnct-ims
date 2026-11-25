@@ -11,6 +11,8 @@ if mkdir /tmp/zxct-ims-autostart 2>/dev/null; then
         else
             program=/mnt/userdata/zxct-ims
         fi
+        sh /mnt/userdata/zxct-ims-start/webui.sh
+        "$program" --webui &
         nv get admin_Password | "$program" --daemon
     ) </dev/null >/dev/null 2>&1 &
 fi
