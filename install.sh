@@ -18,7 +18,7 @@ fi
 
 "$adb" push "$program" /mnt/userdata/zxct-ims.gz
 "$adb" shell 'mkdir -p /tmp/zxct-deploy'
-for file in global.sh hook.sh install-autostart.sh; do
+for file in global.sh hook.sh install-autostart.sh webui.sh webui.js; do
     "$adb" push "$root/deploy/$file" "/tmp/zxct-deploy/$file"
 done
 "$adb" shell 'sh /tmp/zxct-deploy/install-autostart.sh'

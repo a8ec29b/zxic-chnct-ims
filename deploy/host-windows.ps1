@@ -19,7 +19,7 @@ try {
         if (-not (Test-Path -LiteralPath $program)) { throw '找不到程序文件，请使用完整的部署包或先构建程序。' }
         Invoke-Adb push $program /mnt/userdata/zxct-ims.gz
         Invoke-Adb shell 'mkdir -p /tmp/zxct-deploy'
-        foreach ($file in @('global.sh', 'hook.sh', 'install-autostart.sh')) {
+        foreach ($file in @('global.sh', 'hook.sh', 'install-autostart.sh', 'webui.sh', 'webui.js')) {
             Invoke-Adb push (Join-Path $PSScriptRoot $file) "/tmp/zxct-deploy/$file"
         }
         Invoke-Adb shell 'sh /tmp/zxct-deploy/install-autostart.sh'
