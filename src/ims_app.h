@@ -7,7 +7,7 @@ enum ims_app_result {
     IMS_APP_OK = 0,
     IMS_APP_LOGIN_FAILED = 1,
     IMS_APP_SIM_UNAVAILABLE = 2,
-    IMS_APP_NOT_TELECOM = 3
+    IMS_APP_UNSUPPORTED_OPERATOR = 3
 };
 
 typedef int (*ims_app_start_fn)(struct at_http *at, const char *imsi, void *context);

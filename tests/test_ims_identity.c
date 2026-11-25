@@ -59,6 +59,13 @@ int main(void)
     assert(ims_identity_read(&sim, &identity) == 1 && restored);
     assert(ims_identity_from_imsi("460110123456789", &identity) == 0);
     assert(!strcmp(identity.domain, "ims.mnc011.mcc460.3gppnetwork.org"));
+    assert(ims_identity_from_imsi("460011234567890", &identity) == 0);
+    assert(!strcmp(identity.domain, "ims.mnc001.mcc460.3gppnetwork.org"));
+    assert(!strcmp(identity.private_identity, "460011234567890@ims.mnc001.mcc460.3gppnetwork.org"));
+    assert(ims_identity_from_imsi("460061234567890", &identity) == 0);
+    assert(!strcmp(identity.domain, "ims.mnc006.mcc460.3gppnetwork.org"));
+    assert(ims_identity_from_imsi("460091234567890", &identity) == 0);
+    assert(!strcmp(identity.domain, "ims.mnc009.mcc460.3gppnetwork.org"));
     assert(ims_identity_from_imsi("460001234567890", &identity) == -1);
     puts("ims_identity: ok");
     return 0;

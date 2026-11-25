@@ -1,4 +1,5 @@
 #include "ims_identity.h"
+#include "operator_plmn.h"
 
 #include <stdio.h>
 #include <string.h>
@@ -153,8 +154,7 @@ out:
 int ims_identity_from_imsi(const char *imsi, struct ims_identity *identity)
 {
     if (strlen(imsi) != 15 || strspn(imsi, "0123456789") != 15 ||
-        (memcmp(imsi, "46003", 5) && memcmp(imsi, "46005", 5) &&
-         memcmp(imsi, "46011", 5) && memcmp(imsi, "46012", 5))) return -1;
+        !operator_supported_imsi(imsi)) return -1;
     memset(identity, 0, sizeof(*identity));
     snprintf(identity->domain, sizeof(identity->domain), "ims.mnc0%c%c.mcc460.3gppnetwork.org", imsi[3], imsi[4]);
     snprintf(identity->private_identity, sizeof(identity->private_identity), "%.15s@%.64s", imsi, identity->domain);
