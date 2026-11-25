@@ -93,7 +93,7 @@ static int retry(const char *password)
     if (at_http_login(&at, password)) return 503;
     result = operator_gate(&at, imsi);
     memset(imsi, 0, sizeof(imsi));
-    if (result != OPERATOR_GATE_OK) return result == OPERATOR_GATE_NOT_TELECOM ? 403 : 503;
+    if (result != OPERATOR_GATE_OK) return result == OPERATOR_GATE_UNSUPPORTED_OPERATOR ? 403 : 503;
     pid = active_pid();
     if (pid) {
         if (kill((pid_t)pid, SIGTERM)) return 503;
