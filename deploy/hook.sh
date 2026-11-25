@@ -12,7 +12,15 @@ if mkdir /tmp/zxct-ims-autostart 2>/dev/null; then
             program=/mnt/userdata/zxct-ims
         fi
         sh /mnt/userdata/zxct-ims-start/webui.sh
-        "$program" --webui &
+        (
+            i=0
+            while [ "$i" -lt 60 ]; do
+                ip -4 addr show dev br0 2>/dev/null | grep -q 'inet ' && break
+                sleep 3
+                i=$(expr "$i" + 1)
+            done
+            exec "$program" --webui
+        ) &
 
         i=0
         while [ "$i" -lt 60 ]; do
