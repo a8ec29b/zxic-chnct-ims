@@ -33,29 +33,47 @@ static int terminal_ok(const char *response)
 
 int usim_open(struct usim *sim, struct at_http *at)
 {
+    static const unsigned char select_mf[] = {0, 0xa4, 0, 0, 2, 0x3f, 0};
+    unsigned char response[256];
+    size_t length;
     char result[1024], *p, *end;
+    int mode;
+#ifdef AT_HTTP_HAS_FAILED
+    int failed = at->failed;
+#endif
     memset(sim, 0, sizeof(*sim));
     sim->at = at;
-    if (at_http_command(at, "AT+CCHO=\"A0000000871002\"", result, sizeof(result)) ||
-        !terminal_ok(result)) return -1;
-    p = result;
-    while (*p) {
-        while (*p == '\r' || *p == '\n' || *p == ' ') p++;
-        if (!strncmp(p, "+CCHO:", 6)) {
-            p += 6;
-            while (*p == ' ' || *p == '\t') p++;
-        }
-        if (*p >= '0' && *p <= '9') {
-            long channel = strtol(p, &end, 10);
-            while (*end == ' ') end++;
-            if ((*end == '\r' || *end == '\n' || !*end) && channel >= 1 && channel <= 3) {
-                sim->channel = (int)channel;
-                return 0;
+    if (!at_http_command(at, "AT+CCHO=\"A0000000871002\"", result, sizeof(result)) && terminal_ok(result)) {
+        p = result;
+        while (*p) {
+            while (*p == '\r' || *p == '\n' || *p == ' ') p++;
+            if (!strncmp(p, "+CCHO:", 6)) {
+                p += 6;
+                while (*p == ' ' || *p == '\t') p++;
             }
+            if (*p >= '0' && *p <= '9') {
+                long channel = strtol(p, &end, 10);
+                while (*end == ' ') end++;
+                if ((*end == '\r' || *end == '\n' || !*end) && channel >= 1 && channel <= 3) {
+                    sim->channel = (int)channel;
+                    break;
+                }
+            }
+            while (*p && *p != '\n') p++;
+            if (*p) p++;
         }
-        while (*p && *p != '\n') p++;
-        if (*p) p++;
     }
+    for (mode = sim->channel ? 1 : 3; mode <= 4; mode++) {
+        sim->mode = mode;
+        length = sizeof(response);
+        if (!usim_transmit(sim, select_mf, sizeof(select_mf), response, &length)) {
+#ifdef AT_HTTP_HAS_FAILED
+            at->failed = failed;
+#endif
+            return 0;
+        }
+    }
+    usim_close(sim);
     return -1;
 }
 
@@ -89,9 +107,9 @@ int usim_transmit(struct usim *sim, const unsigned char *apdu, size_t len,
     size_t i, count, capacity = *response_len;
     long chars, sequence;
     *response_len = 0;
-    if (sim->channel < 1 || sim->channel > 3 || len < 4 || len > 255 || (apdu[0] & 0x43)) return -1;
+    if (sim->mode < 1 || sim->mode > 4 || len < 4 || len > 255 || (apdu[0] & 0x43)) return -1;
     memcpy(data, apdu, len);
-    data[0] |= (unsigned char)sim->channel;
+    if (sim->mode <= 2) data[0] |= (unsigned char)sim->channel;
     if (len == 39 && data[1] == 0x88 && data[2] == 0 && data[3] == 0x81 &&
         data[4] == 34 && data[5] == 16 && data[22] == 16) data[len++] = 0;
     if (data[1] == 0x88) {
@@ -103,7 +121,10 @@ int usim_transmit(struct usim *sim, const unsigned char *apdu, size_t len,
         hex[i * 2] = digits[data[i] >> 4]; hex[i * 2 + 1] = digits[data[i] & 15];
     }
     hex[len * 2] = 0;
-    snprintf(command, sizeof(command), "AT+ZSIM=%u,%s,0", (unsigned int)(len * 2), hex);
+    if (sim->mode == 1) snprintf(command, sizeof(command), "AT+ZSIM=%u,%s,0", (unsigned int)(len * 2), hex);
+    else if (sim->mode == 2) snprintf(command, sizeof(command), "AT+ZSIM=%u,\"%s\",0", (unsigned int)(len * 2), hex);
+    else if (sim->mode == 3) snprintf(command, sizeof(command), "AT+CSIM=%u,%s", (unsigned int)(len * 2), hex);
+    else snprintf(command, sizeof(command), "AT+CSIM=%u,\"%s\"", (unsigned int)(len * 2), hex);
     if ((data[1] == 0x88 ? at_http_command_once : at_http_command)
         (sim->at, command, result, sizeof(result))) {
         if (data[1] == 0x88) (void)write(STDERR_FILENO, "SIM AUTH AT transport failed.\n", 30);
@@ -119,7 +140,7 @@ int usim_transmit(struct usim *sim, const unsigned char *apdu, size_t len,
         }
         return -1;
     }
-    p = strstr(result, "+ZSIM:");
+    p = strstr(result, sim->mode <= 2 ? "+ZSIM:" : "+CSIM:");
     if (!p) return -1;
     p += 6; while (*p == ' ') p++;
     if (*p < '0' || *p > '9') return -1;
@@ -210,6 +231,6 @@ int usim_close(struct usim *sim)
         memset(entry, 0, sizeof(*entry));
         free(entry);
     }
-    sim->channel = 0;
+    sim->channel = 0; sim->mode = 0;
     return rc;
 }

@@ -31,7 +31,7 @@ int main(void)
         "Via: SIP/2.0/UDP [2001:db8::1]:4001;branch=z9hG4bKabc-2\r\n"
         "Call-ID: example\r\nCSeq: 2 REGISTER\r\n"
         "Contact: <sip:user@[2001:db8::1]:4001>;expires=120\r\n"
-        "Service-Route: <sip:route.example;lr>\r\nContent-Length: 0\r\n\r\n";
+        "Service-Route: <sip:route.example;lr>\r\nP-Associated-URI: <sip:assigned@ims.example>\r\nContent-Length: 0\r\n\r\n";
     struct ims_register_request request = {
         .private_identity="user@ims.example", .public_identity="sip:user@ims.example",
         .realm="ims.example", .register_uri="sip:ims.example", .contact_user="user",
@@ -57,6 +57,7 @@ int main(void)
     assert(sip_parse(reply200, sizeof(reply200)-1, &response) == 0);
     assert(ims_registration_response(&reg, &response, 1, authenticate, NULL, packet, sizeof(packet), &length) == IMS_REG_REGISTERED);
     assert(!strcmp(reg.service_route, "<sip:route.example;lr>"));
+    assert(!strcmp(reg.associated_uri, "sip:assigned@ims.example"));
     assert(reg.expires_seconds == 120);
     assert(ims_registration_refresh(&reg, packet, sizeof(packet), &length) == 0);
     assert(reg.request.cseq == 3 && reg.request.nonce_count == 2);

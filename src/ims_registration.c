@@ -1,4 +1,5 @@
 #include "ims_registration.h"
+#include "sip_identity.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -132,6 +133,8 @@ enum ims_reg_event ims_registration_response(struct ims_registration *r,
         if (route && route->length < sizeof(r->service_route)) {
             memcpy(r->service_route, route->data, route->length); r->service_route[route->length] = 0;
         }
+        r->associated_uri[0] = 0;
+        (void)sip_associated_uri(response, r->associated_uri, sizeof(r->associated_uri));
         r->state = IMS_REG_READY;
         return IMS_REG_REGISTERED;
     }

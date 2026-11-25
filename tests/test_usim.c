@@ -4,7 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 
-static int calls, fail_command, aka_success, once_calls;
+static int calls, fail_command, aka_success, once_calls, supported_mode = 1, no_ccho;
 static char last_command[600];
 
 int at_http_command(struct at_http *at, const char *command, char *result, size_t size)
@@ -13,13 +13,22 @@ int at_http_command(struct at_http *at, const char *command, char *result, size_
     calls++;
     snprintf(last_command, sizeof(last_command), "%s", command);
     if (fail_command) return -1;
-    if (strstr(command, "CCHO")) snprintf(result, size, "\r\n+CCHO: 1\r\n\r\nOK\r\n");
+    if (strstr(command, "CCHO")) {
+        if (no_ccho) { at->failed = 1; return -1; }
+        snprintf(result, size, "\r\n+CCHO: 1\r\n\r\nOK\r\n");
+    }
     else if (strstr(command, "CCHC")) snprintf(result, size, "\r\nOK\r\n");
+    else if (strstr(command, "A40000023F00")) {
+        int mode = strstr(command, "AT+ZSIM=") ? (strchr(command, '"') ? 2 : 1) :
+                   (strchr(command, '"') ? 4 : 3);
+        if (mode != supported_mode) { at->failed = 1; return -1; }
+        snprintf(result, size, "\r\n+%s: 4,\"6B00\"\r\n\r\nOK\r\n", mode <= 2 ? "ZSIM" : "CSIM");
+    }
     else if (aka_success == 2 && strstr(command, "01880081"))
         snprintf(result, size, "\r\n+ZSIM: 110,\"DB08112233445566778810000102030405060708090A0B0C0D0E0F10101112131415161718191A1B1C1D1E1F0820212223242526279000\",0\r\n\r\nOK\r\n");
     else if (aka_success && strstr(command, "01880081"))
         snprintf(result, size, "\r\n+ZSIM: 84,\"DB041122334410000102030405060708090A0B0C0D0E0F10101112131415161718191A1B1C1D1E1F9000\",0\r\n\r\nOK\r\n");
-    else snprintf(result, size, "\r\n+ZSIM: 4,\"6A82\",0\r\n\r\nOK\r\n");
+    else snprintf(result, size, "\r\n+%s: 4,\"6A82\",0\r\n\r\nOK\r\n", strstr(command, "AT+CSIM=") ? "CSIM" : "ZSIM");
     return 0;
 }
 
@@ -66,6 +75,25 @@ int main(void)
     assert(usim_authenticate(&sim, rand, autn, &aka) == 0);
     assert(aka.status == USIM_AKA_SUCCESS && aka.res_length == 8 && aka.ik[0] == 0x10);
     assert(usim_close(&sim) == 0);
+    for (supported_mode = 2; supported_mode <= 4; supported_mode++) {
+        at.failed = 0;
+        assert(usim_open(&sim, &at) == 0 && sim.mode == supported_mode && !at.failed);
+        len = sizeof(response);
+        assert(usim_transmit(&sim, select, sizeof(select), response, &len) == 0);
+        if (supported_mode >= 3) assert(strstr(last_command, "00A40000026F07"));
+        else assert(strstr(last_command, "01A40000026F07"));
+        assert(usim_close(&sim) == 0);
+    }
+    no_ccho = 1; supported_mode = 3; at.failed = 0;
+    assert(usim_open(&sim, &at) == 0 && sim.channel == 0 && sim.mode == 3 && !at.failed);
+    challenge[10] = 9; fail_command = 1; len = sizeof(response); before = calls;
+    assert(usim_transmit(&sim, challenge, sizeof(challenge), response, &len) == -1);
+    assert(calls == before + 1 && strstr(last_command, "AT+CSIM=80,00880081") == last_command);
+    fail_command = 0; len = sizeof(response); before = calls;
+    assert(usim_transmit(&sim, challenge, sizeof(challenge), response, &len) == -1 && calls == before);
+    assert(usim_close(&sim) == 0);
+    no_ccho = 0; supported_mode = 0; at.failed = 0;
+    assert(usim_open(&sim, &at) == -1);
     puts("usim: ok");
     return 0;
 }

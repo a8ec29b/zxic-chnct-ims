@@ -1,6 +1,8 @@
 #ifndef AT_HTTP_H
 #define AT_HTTP_H
 
+#define AT_HTTP_HAS_FAILED 1
+
 #include <stddef.h>
 
 struct at_http {

@@ -35,6 +35,23 @@ int main(void)
         assert(flow == (enum ims_flow)i && sip_length == 7 && !memcmp(sip, "MESSAGE", 7));
         assert(ims_transport_decode(&t, packet, length, &flow, &sip, &sip_length) == -1);
     }
+    {
+        struct ims_transport_flow *f = &t.flows[IMS_FLOW_SERVER];
+        struct esp_null_sa peer = f->incoming;
+        udp_length = sizeof(udp);
+        assert(udp6_encode(remote, local, server.port_server, f->local_port,
+                           "MESSAGE", 7, udp, &udp_length) == 0);
+        length = sizeof(packet);
+        assert(esp_null_encode(&peer, 2, udp, udp_length, 17, packet, &length) == 0);
+        t.allow_peer_ports = 1;
+        assert(ims_transport_decode(&t, packet, length, &flow, &sip, &sip_length) == 0);
+        udp_length = sizeof(udp);
+        assert(udp6_encode(remote, local, 5999, f->local_port,
+                           "MESSAGE", 7, udp, &udp_length) == 0);
+        length = sizeof(packet);
+        assert(esp_null_encode(&peer, 3, udp, udp_length, 17, packet, &length) == 0);
+        assert(ims_transport_decode(&t, packet, length, &flow, &sip, &sip_length) == -1);
+    }
     puts("ims_transport: ok");
     return 0;
 }

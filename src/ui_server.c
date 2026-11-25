@@ -85,7 +85,7 @@ static int decode(char *s)
 
 static int retry(const char *password)
 {
-    struct at_http at = {"127.0.0.1", NULL, {0}, 0, 0, 0, 0};
+    struct at_http at = {.address = "127.0.0.1"};
     char imsi[16];
     int pid, pipefd[2], i, result;
     pid_t child;

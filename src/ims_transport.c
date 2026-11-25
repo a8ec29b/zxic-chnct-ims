@@ -75,7 +75,9 @@ int ims_transport_decode(struct ims_transport *t, const unsigned char *packet, s
                     &source, &destination, sip, sip_length)) {
         LOG("IMS UDP payload check failed.\n"); return -1;
     }
-    if (source != f->remote_port || destination != f->local_port) {
+    if ((source != f->remote_port &&
+         (!t->allow_peer_ports || source != t->flows[1 - *flow].remote_port)) ||
+        destination != f->local_port) {
         LOG("IMS UDP ports did not match.\n"); return -1;
     }
     return 0;

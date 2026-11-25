@@ -7,6 +7,7 @@ struct usim_challenge;
 struct usim {
     struct at_http *at;
     int channel;
+    int mode;
     struct usim_challenge *challenges;
 };
 

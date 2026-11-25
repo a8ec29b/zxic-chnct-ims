@@ -73,7 +73,7 @@ struct runtime {
     uint32_t serial, register_cseq;
     uint16_t client_port, server_port;
     unsigned int queue_head, queue_count, pcscf_index;
-    int udp_fd, esp_fd, register_active, register_protected;
+    int udp_fd, esp_fd, register_active, register_protected, unicom;
 };
 
 static uint64_t monotonic_ms(void)
@@ -189,7 +189,8 @@ static int report_response(struct runtime *r, const struct sip_message *message)
     if (!id || id->length != strlen(slot->call_id) || memcmp(id->data, slot->call_id, id->length) ||
         !cseq || cseq->length != 9 || memcmp(cseq->data, "1 MESSAGE", 9)) return 0;
     if (line[8] == '1') return 1;
-    if (line[8] != '2') return -1;
+    if (line[8] != '2' && !r->unicom) return -1;
+    if (line[8] != '2') LOG("IMS SMS report rejected.\n");
     memset(slot, 0, sizeof(*slot));
     r->queue_head = (r->queue_head + 1) % REPORT_QUEUE_SIZE; r->queue_count--;
     return 1;
@@ -209,7 +210,7 @@ static int receive_sms(struct runtime *r, const unsigned char *data, size_t leng
         index = (r->queue_head + i) % REPORT_QUEUE_SIZE;
         slot = &r->reports[index];
         if (!strcmp(transaction_key, slot->transaction_key))
-            return ims_socket_send(r->esp_fd, &r->registration.transport, flow,
+            return ims_socket_send(r->esp_fd, &r->registration.transport, r->unicom ? IMS_FLOW_CLIENT : flow,
                                    slot->sip_response, slot->sip_response_length);
     }
     if (r->queue_count == REPORT_QUEUE_SIZE) return 0;
@@ -220,7 +221,9 @@ static int receive_sms(struct runtime *r, const unsigned char *data, size_t leng
     snprintf(tag, sizeof(tag), "%.8s-%u", r->tag, r->serial);
     snprintf(branch, sizeof(branch), "%.23s-r%u", r->branch, r->serial);
     memset(&request, 0, sizeof(request));
-    request.identity = r->identity.public_identity; request.local_address = r->local_address;
+    request.identity = r->unicom && r->registration.associated_uri[0] ?
+                       r->registration.associated_uri : r->identity.public_identity;
+    request.local_address = r->local_address;
     request.call_id = slot->call_id; request.tag = tag; request.branch = branch;
     request.local_port = r->registration.request.security.port_server; request.cseq = 1;
     request.security_verify = &verify;
@@ -235,7 +238,7 @@ static int receive_sms(struct runtime *r, const unsigned char *data, size_t leng
     slot->length = r->incoming.report_message_length;
     slot->sip_response_length = r->incoming.sip_response_length;
     slot->active = 0; r->queue_count++;
-    if (ims_socket_send(r->esp_fd, &r->registration.transport, flow,
+    if (ims_socket_send(r->esp_fd, &r->registration.transport, r->unicom ? IMS_FLOW_CLIENT : flow,
                         r->incoming.sip_response, r->incoming.sip_response_length)) return -1;
     return 0;
 }
@@ -258,6 +261,7 @@ static int process_message(struct runtime *r, const unsigned char *data, size_t 
     event = ims_registration_response(&r->registration, &message, protected_transport,
                                       authenticate, &r->usim, r->outgoing,
                                       sizeof(r->outgoing), &r->outgoing_length);
+    r->registration.transport.allow_peer_ports = r->unicom;
     r->register_cseq = r->registration.request.cseq;
     if (event == IMS_REG_ERROR) {
         if (r->registration.failure == IMS_REG_FAILURE_SECURITY)
@@ -319,7 +323,8 @@ static int run_connection(struct runtime *r)
         } else if (renew_at && now >= renew_at) {
             if (ims_registration_refresh(&r->registration, r->outgoing, sizeof(r->outgoing),
                                          &r->outgoing_length)) return -1;
-            r->register_cseq = r->registration.request.cseq;
+            r->registration.transport.allow_peer_ports = r->unicom;
+    r->register_cseq = r->registration.request.cseq;
             r->register_active = 1; r->register_protected = 1; renew_at = 0;
             sip_tx_start(&r->register_transaction, now);
         }
@@ -382,6 +387,7 @@ int ims_runtime_start(struct at_http *at, const char *imsi, void *context)
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     r->at = at; r->udp_fd = r->esp_fd = -1;
+    r->unicom = !strncmp(imsi, "46001", 5) || !strncmp(imsi, "46006", 5) || !strncmp(imsi, "46009", 5);
     if (usim_open(&r->usim, at)) { LOG("Cannot open the SIM application.\n"); goto out; }
     identity_status = ims_identity_read(&r->usim, &r->identity);
     if (identity_status < 0 || (identity_status == 1 && ims_identity_from_imsi(imsi, &r->identity))) {
@@ -419,7 +425,7 @@ out:
     if (r->udp_fd >= 0) close(r->udp_fd);
     if (r->esp_fd >= 0) close(r->esp_fd);
     if (r->db) sqlite3_close(r->db);
-    if (r->usim.channel) usim_close(&r->usim);
+    usim_close(&r->usim);
     if (background) unlink("/tmp/zxct-ims.status");
     memset(r, 0, sizeof(*r)); free(r);
     return rc;
