@@ -24,7 +24,7 @@ struct ims_registration {
     struct ims_transport transport;
     struct sip_slice verify;
     unsigned char local_address[16], remote_address[16];
-    char security_verify[2049], branch_base[128], branch[160], service_route[1024];
+    char security_verify[2049], branch_base[128], branch[160], service_route[1024], associated_uri[512];
     unsigned int expires_seconds;
     enum ims_reg_state state;
     enum ims_reg_failure failure;

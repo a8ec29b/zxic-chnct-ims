@@ -205,3 +205,10 @@ int at_http_command_once(struct at_http *client, const char *command, char *resu
 {
     return at_http_command(client, command, result, size);
 }
+
+int at_http_command_on(struct at_http *client, enum at_transport transport,
+                       const char *command, char *result, size_t size)
+{
+    if (transport != AT_TRANSPORT_WEB) return -1;
+    return at_http_command(client, command, result, size);
+}

@@ -13,7 +13,7 @@ int ims_app_run(struct at_http *at, char *password, ims_app_start_fn start, void
     if (result) return IMS_APP_LOGIN_FAILED;
     gate = operator_gate(at, imsi);
     if (gate == OPERATOR_GATE_UNAVAILABLE) return IMS_APP_SIM_UNAVAILABLE;
-    if (gate != OPERATOR_GATE_OK) return IMS_APP_NOT_TELECOM;
+    if (gate != OPERATOR_GATE_OK) return IMS_APP_UNSUPPORTED_OPERATOR;
     result = start(at, imsi, context);
     memset(imsi, 0, sizeof(imsi));
     return result;

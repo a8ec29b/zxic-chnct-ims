@@ -85,7 +85,7 @@ static int decode(char *s)
 
 static int retry(const char *password)
 {
-    struct at_http at = {"127.0.0.1", NULL, {0}, 0, 0, 0, 0};
+    struct at_http at = {.address = "127.0.0.1"};
     char imsi[16];
     int pid, pipefd[2], i, result;
     pid_t child;
@@ -93,7 +93,7 @@ static int retry(const char *password)
     if (at_http_login(&at, password)) return 503;
     result = operator_gate(&at, imsi);
     memset(imsi, 0, sizeof(imsi));
-    if (result != OPERATOR_GATE_OK) return result == OPERATOR_GATE_NOT_TELECOM ? 403 : 503;
+    if (result != OPERATOR_GATE_OK) return result == OPERATOR_GATE_UNSUPPORTED_OPERATOR ? 403 : 503;
     pid = active_pid();
     if (pid) {
         if (kill((pid_t)pid, SIGTERM)) return 503;

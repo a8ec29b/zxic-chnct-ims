@@ -33,7 +33,7 @@
                     xhr.setRequestHeader('Content-Type', 'text/plain');
                     xhr.onload = function () {
                         busy = false;
-                        if (xhr.status !== 200) window.alert(xhr.status === 403 ? '密码错误或当前不是中国电信卡。' : '无法重试注册，请检查设备状态。');
+                        if (xhr.status !== 200) window.alert(xhr.status === 403 ? '密码错误或当前不是支持的中国电信、联通卡。' : '无法重试注册，请检查设备状态。');
                         refresh();
                     };
                     xhr.onerror = function () { busy = false; window.alert('无法连接 IMS 状态服务。'); refresh(); };
@@ -44,7 +44,7 @@
             };
         }
         var button = document.getElementById('zxct-ims-retry');
-        button.disabled = busy || !/^460(03|05|11|12)\d{10}$/.test(imsi.textContent.trim());
+        button.disabled = busy || !/^460(01|03|05|06|09|11|12)\d{10}$/.test(imsi.textContent.trim());
         button.style.opacity = button.disabled ? '0.55' : '1';
     }
     function refresh() {

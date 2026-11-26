@@ -1,7 +1,11 @@
 #ifndef AT_HTTP_H
 #define AT_HTTP_H
 
+#define AT_HTTP_HAS_FAILED 1
+
 #include <stddef.h>
+
+enum at_transport { AT_TRANSPORT_INTERNAL = 1, AT_TRANSPORT_WEB = 2 };
 
 struct at_http {
     const char *address;
@@ -28,5 +32,9 @@ int at_http_command_web(struct at_http *client, const char *command,
                         char *result, size_t result_size);
 int at_http_command_alternate(struct at_http *client, const char *command,
                               char *result, size_t result_size);
+
+/* Send once on the selected AT interface. */
+int at_http_command_on(struct at_http *client, enum at_transport transport,
+                       const char *command, char *result, size_t result_size);
 
 #endif

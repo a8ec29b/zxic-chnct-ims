@@ -1,10 +1,11 @@
 #include "modem_info.h"
+#include "operator_plmn.h"
 
 #include <arpa/inet.h>
 #include <stdlib.h>
 #include <string.h>
 
-int modem_telecom_imsi(const char *response, char imsi[16])
+int modem_supported_imsi(const char *response, char imsi[16])
 {
     const char *p = response, *end;
     size_t len;
@@ -17,8 +18,7 @@ int modem_telecom_imsi(const char *response, char imsi[16])
         }
         len = (size_t)(end - p);
         if (len >= 6 && len <= 15 && strspn(p, "0123456789") == len) {
-            if (memcmp(p, "46003", 5) && memcmp(p, "46005", 5) &&
-                memcmp(p, "46011", 5) && memcmp(p, "46012", 5)) return -1;
+            if (!operator_supported_imsi(p)) return -1;
             memcpy(imsi, p, len); imsi[len] = 0;
             return 0;
         }

@@ -276,6 +276,19 @@ int at_http_command(struct at_http *client, const char *command, char *result, s
     return -1;
 }
 
+int at_http_command_on(struct at_http *client, enum at_transport transport,
+                       const char *command, char *result, size_t size)
+{
+    int rc = -1;
+    client->last_ipc = 0;
+    if (transport == AT_TRANSPORT_INTERNAL && client->ipc_ready) {
+        rc = ipc_command(command, result, size);
+        if (!rc) client->last_ipc = 1;
+    } else if (transport == AT_TRANSPORT_WEB && client->http_ready)
+        rc = http_command(client, command, result, size);
+    return rc;
+}
+
 int at_http_command_once(struct at_http *client, const char *command, char *result, size_t size)
 {
     client->last_ipc = 0;

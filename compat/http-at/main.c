@@ -28,8 +28,8 @@ int main(int argc, char **argv)
     password[length] = 0;
     result = ims_app_run(&at, password, ims_runtime_start, &daemon);
     memset(password, 0, sizeof(password));
-    if (result == IMS_APP_NOT_TELECOM)
-        (void)write(STDERR_FILENO, "SIM is not China Telecom; exiting.\n", 35);
+    if (result == IMS_APP_UNSUPPORTED_OPERATOR)
+        (void)write(STDERR_FILENO, "SIM operator is unsupported; exiting.\n", 38);
     else if (result == IMS_APP_SIM_UNAVAILABLE)
         (void)write(STDERR_FILENO, "SIM identity unavailable; exiting.\n", 35);
     else if (result == IMS_APP_LOGIN_FAILED)

@@ -11,9 +11,9 @@ struct ims_pdn_info {
     size_t pcscf_count;
 };
 
-/* Parse AT+CIMI and require a mainland China Telecom home PLMN. */
+/* Parse AT+CIMI and require a supported mainland China home PLMN. */
 int modem_read_imsi(const char *response, char imsi[16]);
-int modem_telecom_imsi(const char *response, char imsi[16]);
+int modem_supported_imsi(const char *response, char imsi[16]);
 int modem_context_active(const char *response, int cid);
 int modem_context_is_ims(const char *response, int cid);
 int modem_ims_pdn(const char *response, int cid, struct ims_pdn_info *info);

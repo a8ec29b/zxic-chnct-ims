@@ -17,6 +17,7 @@ struct ims_transport_flow {
 struct ims_transport {
     unsigned char local_address[16], remote_address[16], integrity_key[16];
     struct ims_transport_flow flows[2];
+    int allow_peer_ports;
 };
 
 /* The transport owns a copy of IK; discard it when the registration ends. */
