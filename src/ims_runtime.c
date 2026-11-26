@@ -279,6 +279,7 @@ static int process_message(struct runtime *r, const unsigned char *data, size_t 
     }
     if (event == IMS_REG_REGISTERED) {
         r->register_active = 0;
+        if (usim_registered(&r->usim)) LOG("Cannot save SIM candidate.\n");
         update_status("registered\n");
         if (r->registration.server.integrity == IMS_HMAC_MD5_96)
             LOG("IMS registered: ESP null, HMAC-MD5-96.\n");
@@ -395,9 +396,10 @@ int ims_runtime_start(struct at_http *at, const char *imsi, void *context)
     r->at = at; r->udp_fd = r->esp_fd = -1;
     r->unicom = !strncmp(imsi, "46001", 5) || !strncmp(imsi, "46006", 5) || !strncmp(imsi, "46009", 5);
     if (usim_open(&r->usim, at)) { LOG("Cannot open the SIM application.\n"); goto out; }
-    identity_status = ims_identity_read(&r->usim, &r->identity);
-    if (identity_status < 0 || (identity_status == 1 && ims_identity_from_imsi(imsi, &r->identity))) {
-        LOG("Cannot read IMS identity.\n"); goto out;
+    for (;;) {
+        identity_status = ims_identity_read(&r->usim, &r->identity);
+        if (identity_status >= 0 && (!identity_status || !ims_identity_from_imsi(imsi, &r->identity))) break;
+        if (usim_next(&r->usim)) { LOG("Cannot read IMS identity.\n"); goto out; }
     }
     if (sms_store_open(&r->db, "/etc_rw/sms.db") != SQLITE_OK) {
         LOG("Cannot open the device SMS database.\n"); goto out;
@@ -420,6 +422,14 @@ int ims_runtime_start(struct at_http *at, const char *imsi, void *context)
         if (pdn_ready) {
             if (r->pcscf_index >= r->pdn.pcscf_count) r->pcscf_index = 0;
             failed = run_connection(r) != 0;
+            if (r->usim.aka_failed) {
+                LOG("SIM authentication interface failed; trying another candidate.\n");
+                for (;;) {
+                    if (usim_next(&r->usim)) { LOG("No SIM candidate remains.\n"); goto out; }
+                    identity_status = ims_identity_read(&r->usim, &r->identity);
+                    if (identity_status >= 0 && (!identity_status || !ims_identity_from_imsi(imsi, &r->identity))) break;
+                }
+            }
             if (at->failed) { LOG("AT interfaces unavailable.\n"); goto out; }
             if (failed) {
                 update_status("waiting\n");

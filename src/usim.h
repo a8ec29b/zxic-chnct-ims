@@ -8,6 +8,10 @@ struct usim {
     struct at_http *at;
     int channel;
     int mode;
+    enum at_transport transport;
+    int candidate, visited, ccho_uncertain, aka_failed;
+    int state_loaded, state_pending, state_candidate, preferred;
+    unsigned char last_challenge[35];
     struct usim_challenge *challenges;
 };
 
@@ -20,6 +24,8 @@ struct usim_aka_result {
 
 /* The AT session must already be logged in. */
 int usim_open(struct usim *sim, struct at_http *at);
+int usim_next(struct usim *sim);
+int usim_registered(struct usim *sim);
 
 /* Returns the raw APDU response including SW1/SW2. Never retries a command. */
 int usim_transmit(struct usim *sim, const unsigned char *apdu, size_t apdu_len,

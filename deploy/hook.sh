@@ -53,7 +53,7 @@ if mkdir /tmp/zxct-ims-autostart 2>/dev/null; then
             fi
             owned_pid=
             j=0
-            while [ "$j" -lt 60 ]; do
+            while [ "$j" -lt 300 ]; do
                 sleep 2
                 if active_pid; then
                     if [ -z "$owned_pid" ]; then owned_pid=$pid; fi

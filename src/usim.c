@@ -1,9 +1,16 @@
+#define _POSIX_C_SOURCE 200809L
 #include "usim.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
+#include <errno.h>
+
+#ifndef USIM_STATE_PATH
+#define USIM_STATE_PATH "/mnt/userdata/zxct-ims-start/aka.state"
+#endif
 
 static void auth_result(const char *stage, const unsigned char *data, size_t length)
 {
@@ -31,57 +38,145 @@ static int terminal_ok(const char *response)
     return 0;
 }
 
-int usim_open(struct usim *sim, struct at_http *at)
+struct persisted_state {
+    unsigned char magic[4], challenge[35], candidate, pending, preferred;
+};
+
+static int save_state(struct usim *sim)
+{
+    struct persisted_state state = {{'A','K','A','1'}, {0}, 0, 0, 0};
+    char path[sizeof(USIM_STATE_PATH) + 8];
+    int fd, dir, rc = -1;
+    memcpy(state.challenge, sim->last_challenge, sizeof(state.challenge));
+    state.candidate = (unsigned char)sim->state_candidate;
+    state.pending = (unsigned char)sim->state_pending;
+    state.preferred = (unsigned char)sim->preferred;
+    snprintf(path, sizeof(path), "%s.tmp", USIM_STATE_PATH);
+    fd = open(path, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    if (fd < 0) return -1;
+    if (write(fd, &state, sizeof(state)) == sizeof(state) && !fsync(fd) && !close(fd)) {
+        fd = -1;
+        if (!rename(path, USIM_STATE_PATH)) {
+            char *slash = strrchr(path, '/');
+            if (slash) *slash = 0;
+            dir = open(slash ? path : ".", O_RDONLY);
+            if (dir >= 0) { rc = fsync(dir); close(dir); }
+        }
+    }
+    if (fd >= 0) close(fd);
+    if (rc) unlink(path);
+    memset(&state, 0, sizeof(state));
+    return rc;
+}
+
+static int load_state(struct usim *sim)
+{
+    struct persisted_state state;
+    int fd = open(USIM_STATE_PATH, O_RDONLY);
+    ssize_t n;
+    if (fd < 0) return errno == ENOENT ? 0 : -1;
+    n = read(fd, &state, sizeof(state)); close(fd);
+    if (n != sizeof(state) || memcmp(state.magic, "AKA1", 4) ||
+        state.candidate > 8 || state.preferred > 8 || state.pending > 1) return -1;
+    memcpy(sim->last_challenge, state.challenge, sizeof(state.challenge));
+    sim->state_loaded = 1; sim->state_candidate = state.candidate;
+    sim->state_pending = state.pending; sim->preferred = state.preferred;
+    memset(&state, 0, sizeof(state));
+    return 0;
+}
+
+static int close_channel(struct usim *sim)
+{
+    char command[32], result[1024];
+    if (!sim->channel) return 0;
+    snprintf(command, sizeof(command), "AT+CCHC=%d", sim->channel);
+    sim->channel = 0;
+    if (at_http_command_on(sim->at, sim->transport, command, result, sizeof(result)) || !terminal_ok(result)) {
+        sim->ccho_uncertain = 1;
+        return -1;
+    }
+    return 0;
+}
+
+int usim_next(struct usim *sim)
 {
     static const unsigned char select_mf[] = {0, 0xa4, 0, 0, 2, 0x3f, 0};
     unsigned char response[256];
-    size_t length;
     char result[1024], *p, *end;
-    int mode;
-#ifdef AT_HTTP_HAS_FAILED
-    int failed = at->failed;
-#endif
-    memset(sim, 0, sizeof(*sim));
-    sim->at = at;
-    if (!at_http_command(at, "AT+CCHO=\"A0000000871002\"", result, sizeof(result)) && terminal_ok(result)) {
-        p = result;
-        while (*p) {
-            while (*p == '\r' || *p == '\n' || *p == ' ') p++;
-            if (!strncmp(p, "+CCHO:", 6)) {
-                p += 6;
+    int tries, candidate;
+    size_t length;
+    (void)close_channel(sim);
+    for (tries = 0; tries < 8; tries++) {
+        candidate = (sim->candidate + 1) % 8;
+        sim->candidate = candidate;
+        if (sim->visited & (1 << candidate)) continue;
+        sim->visited |= 1 << candidate;
+        sim->mode = candidate / 2 + 1;
+        sim->transport = candidate % 2 ? AT_TRANSPORT_WEB : AT_TRANSPORT_INTERNAL;
+        if (at_http_command_on(sim->at, sim->transport, "AT", result, sizeof(result)) || !terminal_ok(result)) continue;
+        if (sim->mode <= 2) {
+            if (sim->ccho_uncertain) continue;
+            if (at_http_command_on(sim->at, sim->transport, "AT+CCHO=\"A0000000871002\"", result, sizeof(result))) {
+                sim->ccho_uncertain = 1;
+                continue;
+            }
+            if (!terminal_ok(result)) continue;
+            p = result;
+            while (*p) {
+                while (*p == '\r' || *p == '\n' || *p == ' ') p++;
+                if (!strncmp(p, "+CCHO:", 6)) p += 6;
                 while (*p == ' ' || *p == '\t') p++;
-            }
-            if (*p >= '0' && *p <= '9') {
-                long channel = strtol(p, &end, 10);
-                while (*end == ' ') end++;
-                if ((*end == '\r' || *end == '\n' || !*end) && channel >= 1 && channel <= 3) {
-                    sim->channel = (int)channel;
-                    break;
+                if (*p >= '0' && *p <= '9') {
+                    long channel = strtol(p, &end, 10);
+                    while (*end == ' ') end++;
+                    if ((*end == '\r' || *end == '\n' || !*end) && channel >= 1 && channel <= 3) {
+                        sim->channel = (int)channel; break;
+                    }
                 }
+                while (*p && *p != '\n') p++;
+                if (*p) p++;
             }
-            while (*p && *p != '\n') p++;
-            if (*p) p++;
+            if (!sim->channel) { sim->ccho_uncertain = 1; continue; }
         }
-    }
-    for (mode = sim->channel ? 1 : 3; mode <= 4; mode++) {
-        sim->mode = mode;
         length = sizeof(response);
         if (!usim_transmit(sim, select_mf, sizeof(select_mf), response, &length)) {
-#ifdef AT_HTTP_HAS_FAILED
-            at->failed = failed;
-#endif
+            sim->aka_failed = 0;
             return 0;
         }
+        (void)close_channel(sim);
     }
-    usim_close(sim);
+    sim->mode = 0;
     return -1;
+}
+
+int usim_open(struct usim *sim, struct at_http *at)
+{
+    memset(sim, 0, sizeof(*sim)); sim->at = at; sim->candidate = -1;
+    if (load_state(sim)) return -1;
+    if (sim->state_pending && sim->state_candidate) {
+        sim->candidate = sim->state_candidate - 1;
+        sim->visited |= 1 << sim->candidate;
+    } else if (sim->preferred) sim->candidate = sim->preferred - 2;
+    return usim_next(sim);
+}
+
+int usim_registered(struct usim *sim)
+{
+    sim->preferred = sim->candidate + 1;
+    sim->visited = 1 << sim->candidate;
+    return save_state(sim);
 }
 
 static int remember_challenge(struct usim *sim, const unsigned char *data)
 {
     struct usim_challenge *entry;
+    if (sim->state_loaded && !memcmp(sim->last_challenge, data, 35)) return -1;
     for (entry = sim->challenges; entry; entry = entry->next)
         if (!memcmp(entry->value, data, sizeof(entry->value))) return -1;
+    memcpy(sim->last_challenge, data, 35);
+    sim->state_candidate = sim->candidate + 1; sim->state_pending = 1;
+    if (save_state(sim)) return -1;
+    sim->state_loaded = 1;
     entry = malloc(sizeof(*entry));
     if (!entry) return -1;
     memcpy(entry->value, data, sizeof(entry->value));
@@ -125,8 +220,8 @@ int usim_transmit(struct usim *sim, const unsigned char *apdu, size_t len,
     else if (sim->mode == 2) snprintf(command, sizeof(command), "AT+ZSIM=%u,\"%s\",0", (unsigned int)(len * 2), hex);
     else if (sim->mode == 3) snprintf(command, sizeof(command), "AT+CSIM=%u,%s", (unsigned int)(len * 2), hex);
     else snprintf(command, sizeof(command), "AT+CSIM=%u,\"%s\"", (unsigned int)(len * 2), hex);
-    if ((data[1] == 0x88 ? at_http_command_once : at_http_command)
-        (sim->at, command, result, sizeof(result))) {
+    if (data[1] == 0x88) sim->aka_failed = 1;
+    if (at_http_command_on(sim->at, sim->transport, command, result, sizeof(result))) {
         if (data[1] == 0x88) (void)write(STDERR_FILENO, "SIM AUTH AT transport failed.\n", 30);
         return -1;
     }
@@ -189,6 +284,9 @@ int usim_authenticate(struct usim *sim, const unsigned char rand[16],
         }
         auth_result("SIM AUTH retrieved", answer, len);
     }
+    if (len == 2 && answer[0] == 0x98 && answer[1] == 0x62) {
+        result->status = USIM_AKA_REJECTED; rc = 0; goto out;
+    }
     if (len < 4 || answer[len - 2] != 0x90 || answer[len - 1] != 0) goto out;
     len -= 2;
     if (answer[0] == 0xdc) {
@@ -213,6 +311,10 @@ int usim_authenticate(struct usim *sim, const unsigned char rand[16],
 out:
     memset(apdu, 0, sizeof(apdu));
     memset(answer, 0, sizeof(answer));
+    if (!rc) {
+        sim->aka_failed = 0; sim->state_pending = 0;
+        if (save_state(sim)) rc = -1;
+    }
     if (rc) memset(result, 0, sizeof(*result));
     return rc;
 }
@@ -220,12 +322,7 @@ out:
 int usim_close(struct usim *sim)
 {
     struct usim_challenge *entry;
-    char command[32], result[1024];
-    int rc = 0;
-    if (sim->channel) {
-        snprintf(command, sizeof(command), "AT+CCHC=%d", sim->channel);
-        if (at_http_command(sim->at, command, result, sizeof(result)) || !terminal_ok(result)) rc = -1;
-    }
+    int rc = close_channel(sim);
     while ((entry = sim->challenges) != NULL) {
         sim->challenges = entry->next;
         memset(entry, 0, sizeof(*entry));

@@ -121,7 +121,7 @@ build/at_http_probe: tests/at_http_probe.c src/at_http.c src/at_http.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/at_http_probe.c src/at_http.c -o $@
 
 build/test_usim: tests/test_usim.c src/usim.c src/usim.h | build
-	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_usim.c src/usim.c -o $@
+	$(CC) $(CPPFLAGS) $(CFLAGS) -DUSIM_STATE_PATH='"/tmp/zxct-test-aka.state"' tests/test_usim.c src/usim.c -o $@
 
 build/test_sms_pdu: tests/test_sms_pdu.c src/sms_pdu.c src/sms_pdu.h | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) tests/test_sms_pdu.c src/sms_pdu.c -o $@
