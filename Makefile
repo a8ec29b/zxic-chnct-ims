@@ -165,6 +165,9 @@ build/test_ims_identity: tests/test_ims_identity.c src/ims_identity.c | build
 build/test_sms_receipt: tests/test_sms_receipt.c src/sms_incoming.c src/sms_report.c src/sip_message.c src/sms_receipt.c src/sms_store.c src/sms_pdu.c | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -lsqlite3 -o $@
 
+build/test_ims_sms_fallback: tests/test_ims_sms_fallback.c src/ims_runtime.c src/sms_report.c src/sip_message.c src/sip_transaction.c | build
+	$(CC) $(CPPFLAGS) $(CFLAGS) -ffunction-sections -fdata-sections tests/test_ims_sms_fallback.c src/sms_report.c src/sip_message.c src/sip_transaction.c -Wl,--gc-sections -o $@
+
 build/test_sms_report: tests/test_sms_report.c src/sms_report.c src/sip_message.c | build
 	$(CC) $(CPPFLAGS) $(CFLAGS) $^ -o $@
 
@@ -180,7 +183,8 @@ build/test_ims_activate: tests/test_ims_activate.c src/ims_activate.c | build
 build/test_ims_registration: tests/test_ims_registration.c src/ims_registration.c src/ims_register.c src/ims_challenge.c src/ims_security.c src/ims_transport.c src/sip_message.c src/sip_identity.c src/udp6.c src/esp_null.c src/ims_digest.c $(CRYPTO_SOURCES) | build
 	$(CC) $(CPPFLAGS) $(CRYPTO_CPPFLAGS) $(CFLAGS) $^ -o $@
 
-test: build/test_sip_identity build/test_sms_store build/test_usim build/test_sms_pdu build/test_sip_message build/test_ims_digest build/test_esp_null build/test_udp6 build/test_ims_challenge build/test_modem_info build/test_ims_security build/test_ims_register build/test_ims_transport build/test_sip_transaction build/test_ims_identity build/test_sms_receipt build/test_sms_report build/test_ims_app build/test_ims_pdn build/test_ims_activate build/test_ims_registration
+test: build/test_ims_sms_fallback build/test_sip_identity build/test_sms_store build/test_usim build/test_sms_pdu build/test_sip_message build/test_ims_digest build/test_esp_null build/test_udp6 build/test_ims_challenge build/test_modem_info build/test_ims_security build/test_ims_register build/test_ims_transport build/test_sip_transaction build/test_ims_identity build/test_sms_receipt build/test_sms_report build/test_ims_app build/test_ims_pdn build/test_ims_activate build/test_ims_registration
+	./build/test_ims_sms_fallback
 	./build/test_sip_identity
 	./build/test_sms_store
 	./build/test_usim

@@ -49,8 +49,11 @@ static void stop_handler(int signal_number)
 }
 
 struct report_slot {
-    char packet[4096], call_id[64], transaction_key[1024], sip_response[2048];
-    size_t length, sip_response_length;
+    char packet[4096], fallback_packet[4096], call_id[64], fallback_call_id[64];
+    char transaction_key[1024], sip_response[2048];
+    size_t length, fallback_length, sip_response_length;
+    enum ims_flow incoming_flow;
+    int fallback_active, response_legacy;
     struct sip_transaction transaction;
     int active;
 };
@@ -73,7 +76,7 @@ struct runtime {
     uint32_t serial, register_cseq;
     uint16_t client_port, server_port;
     unsigned int queue_head, queue_count, pcscf_index;
-    int udp_fd, esp_fd, register_active, register_protected, unicom;
+    int udp_fd, esp_fd, register_active, register_protected, unicom, sms_legacy;
 };
 
 static uint64_t monotonic_ms(void)
@@ -178,6 +181,23 @@ static int send_register(struct runtime *r)
     return send(r->udp_fd, r->outgoing, r->outgoing_length, 0) == (ssize_t)r->outgoing_length ? 0 : -1;
 }
 
+static int report_fallback(struct runtime *r, struct report_slot *slot)
+{
+    if (!slot->fallback_length || slot->fallback_active) return 0;
+    if (!slot->response_legacy && slot->incoming_flow != IMS_FLOW_CLIENT) {
+        if (ims_socket_send(r->esp_fd, &r->registration.transport, slot->incoming_flow,
+                            slot->sip_response, slot->sip_response_length)) return -1;
+        slot->response_legacy = 1;
+    }
+    memcpy(slot->packet, slot->fallback_packet, slot->fallback_length);
+    slot->length = slot->fallback_length;
+    memcpy(slot->call_id, slot->fallback_call_id, strlen(slot->fallback_call_id) + 1);
+    slot->fallback_active = 1;
+    sip_tx_start(&slot->transaction, monotonic_ms());
+    LOG("IMS SMS report: trying original path.\n");
+    return 1;
+}
+
 static int report_response(struct runtime *r, const struct sip_message *message)
 {
     struct report_slot *slot;
@@ -189,8 +209,14 @@ static int report_response(struct runtime *r, const struct sip_message *message)
     if (!id || id->length != strlen(slot->call_id) || memcmp(id->data, slot->call_id, id->length) ||
         !cseq || cseq->length != 9 || memcmp(cseq->data, "1 MESSAGE", 9)) return 0;
     if (line[8] == '1') return 1;
-    if (line[8] != '2' && !r->unicom) return -1;
-    if (line[8] != '2') LOG("IMS SMS report rejected.\n");
+    if (line[8] != '2') {
+        int fallback = report_fallback(r, slot);
+        if (fallback) return fallback;
+        LOG("IMS SMS report rejected.\n");
+    } else if (slot->fallback_active) {
+        r->sms_legacy = 1;
+        LOG("IMS SMS original path accepted.\n");
+    }
     memset(slot, 0, sizeof(*slot));
     r->queue_head = (r->queue_head + 1) % REPORT_QUEUE_SIZE; r->queue_count--;
     return 1;
@@ -203,15 +229,21 @@ static int receive_sms(struct runtime *r, const unsigned char *data, size_t leng
     struct sms_report_request request;
     struct sip_slice verify = {r->registration.security_verify, r->registration.verify.length};
     struct sip_slice route = {r->registration.service_route, strlen(r->registration.service_route)};
-    char tag[64], branch[96], transaction_key[1024];
+    char tag[64], branch[96], fallback_branch[96], target[512], transaction_key[1024];
+    struct sip_message report_message;
     unsigned int index, i;
     if (sip_message_transaction_key(message, transaction_key, sizeof(transaction_key))) return 0;
     for (i = 0; i < r->queue_count; i++) {
         index = (r->queue_head + i) % REPORT_QUEUE_SIZE;
         slot = &r->reports[index];
-        if (!strcmp(transaction_key, slot->transaction_key))
-            return ims_socket_send(r->esp_fd, &r->registration.transport, r->unicom ? IMS_FLOW_CLIENT : flow,
+        if (!strcmp(transaction_key, slot->transaction_key)) {
+            enum ims_flow response_flow = IMS_FLOW_CLIENT;
+            if (!r->unicom && (r->sms_legacy || flow != IMS_FLOW_CLIENT)) {
+                response_flow = flow; slot->response_legacy = 1;
+            }
+            return ims_socket_send(r->esp_fd, &r->registration.transport, response_flow,
                                    slot->sip_response, slot->sip_response_length);
+        }
     }
     if (r->queue_count == REPORT_QUEUE_SIZE) return 0;
     index = (r->queue_head + r->queue_count) % REPORT_QUEUE_SIZE;
@@ -221,7 +253,7 @@ static int receive_sms(struct runtime *r, const unsigned char *data, size_t leng
     snprintf(tag, sizeof(tag), "%.8s-%u", r->tag, r->serial);
     snprintf(branch, sizeof(branch), "%.23s-r%u", r->branch, r->serial);
     memset(&request, 0, sizeof(request));
-    request.identity = r->unicom && r->registration.associated_uri[0] ?
+    request.identity = !r->sms_legacy && r->registration.associated_uri[0] ?
                        r->registration.associated_uri : r->identity.public_identity;
     request.local_address = r->local_address;
     request.call_id = slot->call_id; request.tag = tag; request.branch = branch;
@@ -232,14 +264,33 @@ static int receive_sms(struct runtime *r, const unsigned char *data, size_t leng
         LOG("IMS SMS processing failed.\n"); return 0;
     }
     LOG("IMS SMS stored or duplicate handled.\n");
+    slot->incoming_flow = flow;
+    if (!r->unicom && !r->sms_legacy &&
+        !sip_parse(r->incoming.report_message, r->incoming.report_message_length, &report_message) &&
+        !sms_report_target(message, target, sizeof(target))) {
+        snprintf(slot->fallback_call_id, sizeof(slot->fallback_call_id), "%.16s-%u-f", r->call_id, r->serial);
+        snprintf(fallback_branch, sizeof(fallback_branch), "%.23s-r%u-f", r->branch, r->serial);
+        request.target = target; request.identity = r->identity.public_identity;
+        request.call_id = slot->fallback_call_id; request.branch = fallback_branch;
+        request.in_reply_to = sip_header_get(message, "call-id");
+        if (sms_report_build(&request, (const unsigned char *)report_message.body.data,
+                             report_message.body.length, slot->fallback_packet,
+                             sizeof(slot->fallback_packet), &slot->fallback_length)) slot->fallback_length = 0;
+    }
     memcpy(slot->packet, r->incoming.report_message, r->incoming.report_message_length);
     memcpy(slot->transaction_key, transaction_key, strlen(transaction_key) + 1);
     memcpy(slot->sip_response, r->incoming.sip_response, r->incoming.sip_response_length);
     slot->length = r->incoming.report_message_length;
     slot->sip_response_length = r->incoming.sip_response_length;
     slot->active = 0; r->queue_count++;
-    if (ims_socket_send(r->esp_fd, &r->registration.transport, r->unicom ? IMS_FLOW_CLIENT : flow,
-                        r->incoming.sip_response, r->incoming.sip_response_length)) return -1;
+    if (ims_socket_send(r->esp_fd, &r->registration.transport,
+                        !r->unicom && r->sms_legacy ? flow : IMS_FLOW_CLIENT,
+                        r->incoming.sip_response, r->incoming.sip_response_length)) {
+        if (r->unicom || r->sms_legacy || flow == IMS_FLOW_CLIENT ||
+            ims_socket_send(r->esp_fd, &r->registration.transport, flow,
+                            r->incoming.sip_response, r->incoming.sip_response_length)) return -1;
+        slot->response_legacy = 1;
+    }
     return 0;
 }
 
@@ -261,7 +312,7 @@ static int process_message(struct runtime *r, const unsigned char *data, size_t 
     event = ims_registration_response(&r->registration, &message, protected_transport,
                                       authenticate, &r->usim, r->outgoing,
                                       sizeof(r->outgoing), &r->outgoing_length);
-    r->registration.transport.allow_peer_ports = r->unicom;
+    r->registration.transport.allow_peer_ports = 1;
     r->register_cseq = r->registration.request.cseq;
     if (event == IMS_REG_ERROR) {
         if (r->registration.failure == IMS_REG_FAILURE_SECURITY)
@@ -318,13 +369,17 @@ static int run_connection(struct runtime *r)
             struct report_slot *slot = &r->reports[r->queue_head];
             if (!slot->active) { sip_tx_start(&slot->transaction, now); slot->active = 1; }
             action = sip_tx_poll(&slot->transaction, now);
-            if (action == SIP_TX_TIMEOUT) return -1;
+            if (action == SIP_TX_TIMEOUT) {
+                int fallback = report_fallback(r, slot);
+                if (fallback < 0) return -1;
+                if (!fallback) return -1;
+            }
             if (action == SIP_TX_SEND && ims_socket_send(r->esp_fd, &r->registration.transport,
                 IMS_FLOW_CLIENT, slot->packet, slot->length)) return -1;
         } else if (renew_at && now >= renew_at) {
             if (ims_registration_refresh(&r->registration, r->outgoing, sizeof(r->outgoing),
                                          &r->outgoing_length)) return -1;
-            r->registration.transport.allow_peer_ports = r->unicom;
+            r->registration.transport.allow_peer_ports = 1;
     r->register_cseq = r->registration.request.cseq;
             r->register_active = 1; r->register_protected = 1; renew_at = 0;
             sip_tx_start(&r->register_transaction, now);
