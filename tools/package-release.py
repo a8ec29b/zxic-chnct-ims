@@ -21,11 +21,6 @@ def package(platform, tools_zip, output):
             add(archive, name, (ROOT / source).read_bytes(), executable)
 
         file("zxct-ims.gz", "build/zxct-ims.arm.gz")
-        file("LICENSE", "LICENSE")
-        file("THIRD_PARTY_NOTICES.md", "THIRD_PARTY_NOTICES.md")
-        file("licenses/mbedtls-LICENSE.txt", "third_party/mbedtls/LICENSE")
-        file("licenses/date-LICENSE.txt", "third_party/howard-hinnant-date-LICENSE.txt")
-        add(archive, "licenses/adb-NOTICE.txt", tools.read("platform-tools/NOTICE.txt"))
         for name in DEPLOY:
             file(f"deploy/{name}", f"deploy/{name}")
         if platform == "linux":
